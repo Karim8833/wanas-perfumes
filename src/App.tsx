@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import PricingCalculator from './components/PricingCalculator';
 import OrderBoard from './components/OrderBoard';
 import AccountingDashboard from './components/AccountingDashboard';
@@ -249,7 +249,7 @@ function App() {
         </div>
 
         <div className="animate-in fade-in duration-300 flex-1 overflow-hidden flex flex-col z-10 relative">
-          {activeTab === 'calculator' && canAccessPricing && <PricingCalculator onAddOrder={addOrder} currentUserRole={currentUser.role} settings={settings} />}
+          {activeTab === 'calculator' && canAccessPricing && <PricingCalculator currentUserRole={currentUser.role} settings={settings} />}
           {activeTab === 'orders' && canAccessOrders && <OrderBoard orders={orders} updateOrderStatus={updateOrderStatus} onAddOrder={addOrder} />}
           {activeTab === 'dashboard' && canAccessDashboard && <AccountingDashboard orders={orders} settings={settings} currentUserRole={currentUser.role} />}
           {activeTab === 'customers' && canAccessCustomers && <CustomerDatabase orders={orders} currentUserRole={currentUser.role} />}

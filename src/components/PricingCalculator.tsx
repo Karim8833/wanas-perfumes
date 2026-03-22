@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Calculator, ArrowRight, Save, Receipt, Lock } from 'lucide-react';
-import { Order, BottleSize, Role, SystemSettings } from '../types';
+import { useState, useEffect, FC } from 'react';
+import { Calculator, Lock } from 'lucide-react';
+import { BottleSize, Role, SystemSettings } from '../types';
 
 interface PricingCalculatorProps {
-  onAddOrder?: (order: Order) => void;
   currentUserRole?: Role;
   settings: SystemSettings;
 }
 
-const PricingCalculator: React.FC<PricingCalculatorProps> = ({ onAddOrder, currentUserRole = 'Owner', settings }) => {
+const PricingCalculator: FC<PricingCalculatorProps> = ({ currentUserRole = 'Owner', settings }) => {
   const [size, setSize] = useState<BottleSize>('50ml');
   const [emptyBottlePrice, setEmptyBottlePrice] = useState<number | ''>('');
   const [oilPrice, setOilPrice] = useState<number | ''>('');
