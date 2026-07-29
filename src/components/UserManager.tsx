@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Role } from '../types';
 import { Shield, UserPlus, Trash2, KeyRound } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 interface UserManagerProps {
   users: User[];
@@ -11,32 +12,66 @@ interface UserManagerProps {
 const UserManager: React.FC<UserManagerProps> = ({ users, setUsers, currentUser }) => {
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Moderator' as Role });
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.username || !newUser.password) return;
     
-    // Prevent duplicate usernames
+    setIsProcessing(true);
+    
     if (users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase())) {
-        alert("Username already exists!");
+        alert("Username/Email already exists locally!");
+        setIsProcessing(false);
         return;
     }
 
-    setUsers(prev => [...prev, {
-      id: Math.random().toString(36).substr(2, 9),
-      username: newUser.username,
-      password: newUser.password,
-      role: newUser.role
-    }]);
+    try {
+      const insertPayload = {
+        username: newUser.username,
+        password: newUser.password, 
+        role: newUser.role
+      };
+      
+      console.log('Sending to Supabase:', insertPayload);
+      const { data, error: dbError } = await supabase.from('app_users').insert(insertPayload).select().single();
+      console.log('Supabase Response:', { data, error: dbError });
+      
+      if (dbError) {
+        alert('Failed to insert user profile: ' + dbError.message);
+        setIsProcessing(false);
+        return;
+      }
 
-    setNewUser({ username: '', password: '', role: 'Moderator' });
+      setUsers(prev => [...prev, data as User]);
+      setNewUser({ username: '', password: '', role: 'Moderator' });
+    } catch (e: any) {
+       alert(e.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = async (id: string) => {
     if (currentUser.id === id) {
       alert("You cannot delete yourself.");
       return;
     }
-    setUsers(prev => prev.filter(u => u.id !== id));
+    
+    try {
+      setIsProcessing(true);
+      const { error } = await supabase.from('app_users').delete().eq('id', id);
+      if (error) {
+        alert(error.message);
+        setIsProcessing(false);
+        return;
+      }
+      setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -94,9 +129,10 @@ const UserManager: React.FC<UserManagerProps> = ({ users, setUsers, currentUser 
             </div>
             <button 
               type="submit"
-              className="w-full mt-4 flex justify-center items-center py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 transition-all active:scale-95 shadow-sm"
+              disabled={isProcessing}
+              className={`w-full mt-4 flex justify-center items-center py-2.5 px-4 rounded-xl text-sm font-bold text-white transition-all active:scale-95 shadow-sm ${isProcessing ? 'bg-amber-400 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-700'}`}
             >
-              Add User
+              {isProcessing ? 'Provisioning...' : 'Add User'}
             </button>
           </form>
         </div>

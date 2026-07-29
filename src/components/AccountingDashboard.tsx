@@ -1,6 +1,11 @@
-import React, { useMemo } from 'react';
-import { TrendingUp, DollarSign, Wallet, LineChart, Crown, Flame, FileSpreadsheet } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { TrendingUp, DollarSign, Wallet, LineChart, Crown, Flame, FileSpreadsheet, Landmark, ShoppingCart, ArrowLeft, BarChart2 } from 'lucide-react';
 import { Order, SystemSettings, Role } from '../types';
+import Purchases from './Purchases';
+import CapitalAssets from './CapitalAssets';
+import WeeklyReportModal from './WeeklyReportModal';
+import ActivityLedger from './ActivityLedger';
+import { useLanguage } from '../LanguageContext';
 
 interface AccountingDashboardProps {
   orders: Order[];
@@ -9,6 +14,10 @@ interface AccountingDashboardProps {
 }
 
 const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, settings, currentUserRole = 'Owner' }) => {
+  const [view, setView] = useState<'dashboard'|'purchases'|'capital'|'activity'>('dashboard');
+  const [showWeeklyReport, setShowWeeklyReport] = useState(false);
+  const { t, language } = useLanguage();
+
   const soldOrders = useMemo(() => {
     if (!orders || !Array.isArray(orders)) return [];
     return orders
@@ -21,16 +30,35 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
   }, [orders]);
   
   const stats = useMemo(() => {
-    // Revenue is now strictly the sum of all nested array totals
     const revenue = soldOrders.reduce((sum, order) => sum + (order.totalOrderValue || 0), 0);
-    // Dynamic cost abstraction
-    const marginMultiplier = 1 + settings.profitMargin + settings.reinvestmentMargin;
-    const costBasis = revenue / marginMultiplier;
     
-    const profit = costBasis * settings.profitMargin;
-    const reinvestment = costBasis * settings.reinvestmentMargin;
+    let totalProductionCosts = 0;
+    soldOrders.forEach(order => {
+        let orderCost = 0;
+        let hasNewLogic = false;
 
-    return { revenue, profit, reinvestment };
+        if (order.items && Array.isArray(order.items)) {
+           order.items.forEach(item => {
+               if (item.calculatedCost !== undefined && item.calculatedCost > 0) {
+                   orderCost += item.calculatedCost * (item.quantity || 1);
+                   hasNewLogic = true;
+               }
+           });
+        }
+
+        if (hasNewLogic) {
+            totalProductionCosts += orderCost;
+        } else {
+            // Legacy orders fallback
+            const marginMultiplier = 1 + settings.profitMargin + settings.reinvestmentMargin;
+            totalProductionCosts += (order.totalOrderValue || 0) / marginMultiplier;
+        }
+    });
+
+    const netProfit = revenue - totalProductionCosts;
+    const reinvestment = totalProductionCosts * settings.reinvestmentMargin; // Legacy compatibility
+
+    return { revenue, profit: netProfit, reinvestment, totalProductionCosts };
   }, [soldOrders, settings]);
 
   const analytics = useMemo(() => {
@@ -68,17 +96,29 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
     };
   }, [soldOrders]);
 
+  // Helper: compute production cost for a single order from item data
+  const getOrderCost = (order: Order): number => {
+    if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+      const hasNewLogic = order.items.some(i => i.calculatedCost !== undefined && i.calculatedCost > 0);
+      if (hasNewLogic) {
+        return order.items.reduce((sum, i) => sum + (i.calculatedCost || 0) * (i.quantity || 1), 0);
+      }
+    }
+    // Legacy fallback
+    const marginMultiplier = 1 + settings.profitMargin + settings.reinvestmentMargin;
+    return (order.totalOrderValue || 0) / marginMultiplier;
+  };
+
   const handleExportExcel = async () => {
     try {
       const xlsx = await import('xlsx');
       const { utils, writeFile } = xlsx;
 
       const data = soldOrders.map(order => {
-        const marginMultiplier = 1 + settings.profitMargin + settings.reinvestmentMargin;
-        const costBasis = (order.totalOrderValue || 0) / marginMultiplier;
-        const profit = costBasis * settings.profitMargin;
-        const reinvest = costBasis * settings.reinvestmentMargin;
-        
+        const sellingPrice = order.totalOrderValue || 0;
+        const costPrice = getOrderCost(order);
+        const liveMargin = sellingPrice - costPrice;
+
         let itemsSummary = '';
         if (order.items && Array.isArray(order.items) && order.items.length > 0) {
            itemsSummary = order.items.map(i => `${i.quantity || 1}x ${i.perfumeName} (${i.size})`).join(', ');
@@ -90,9 +130,9 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
           'Date': order.soldAt ? new Date(order.soldAt).toLocaleDateString() : (order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'),
           'Client Name': order.clientName || 'Unknown',
           'Items': itemsSummary,
-          'Revenue (EGP)': (order.totalOrderValue || 0).toFixed(2),
-          'Profit (EGP)': profit.toFixed(2),
-          'Reinvestment (EGP)': reinvest.toFixed(2)
+          'Selling Price (EGP)': Math.round(sellingPrice),
+          'Cost Price (EGP)': Math.round(costPrice),
+          'Live Margin (EGP)': Math.round(liveMargin)
         };
       });
 
@@ -109,10 +149,46 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
 
   return (
     <div className="space-y-6 h-full overflow-y-auto custom-scrollbar pb-8 pr-1 md:pr-2">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Accounting Dashboard</h2>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Financial overview based on completed sales</p>
-      </div>
+      {view === 'dashboard' ? (
+        <>
+          <div className="flex flex-wrap grow justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('accountingDashboard')}</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">{t('financialOverview')}</p>
+            </div>
+            {currentUserRole === 'Owner' && (
+              <div className="flex flex-wrap items-center gap-3 mt-4 sm:mt-0">
+                <button
+                  onClick={() => setShowWeeklyReport(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-500 font-bold rounded-xl hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-900 shadow-sm"
+                >
+                  <BarChart2 className="w-5 h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">{language === 'ar' ? 'تقرير الأسبوع' : 'Weekly Report'}</span>
+                </button>
+                <button
+                  onClick={() => setView('capital')}
+                  className="flex items-center space-x-2 px-4 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-500 font-bold rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors border border-indigo-200 dark:border-indigo-900 shadow-sm"
+                >
+                  <Landmark className="w-5 h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">{t('capitalAssets')}</span>
+                </button>
+                <button
+                  onClick={() => setView('purchases')}
+                  className="flex items-center space-x-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-500 font-bold rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors border border-amber-200 dark:border-amber-900"
+                >
+                  <ShoppingCart className="w-5 h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">{t('purchasesModule')}</span>
+                </button>
+                <button
+                  onClick={() => setView('activity')}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-500 font-bold rounded-xl hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors border border-purple-200 dark:border-purple-900 shadow-sm"
+                >
+                  <FileSpreadsheet className="w-5 h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Activity Ledger</span>
+                </button>
+              </div>
+            )}
+          </div>
 
       {soldOrders.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-900/30 dark:border-amber-900 dark:text-amber-400 p-4 rounded-xl flex items-center mb-6">
@@ -131,49 +207,51 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
               <LineChart className="w-5 h-5" />
             </div>
-            <span className="font-semibold text-sm uppercase tracking-wider">Total Revenue</span>
+            <span className="font-semibold text-sm uppercase tracking-wider">{t('totalRevenue')}</span>
           </div>
           <div className="flex items-end space-x-2">
-            <span className="text-4xl font-bold text-slate-800 dark:text-slate-100">{stats.revenue.toFixed(2)}</span>
+            <span className="text-4xl font-bold text-slate-800 dark:text-slate-100">{Math.round(stats.revenue)}</span>
             <span className="text-lg text-slate-500 dark:text-slate-400 mb-1">EGP</span>
           </div>
-          <p className="text-sm text-slate-400 mt-2">From {soldOrders.length} cart(s) processed</p>
+          <p className="text-sm text-slate-400 mt-2">{soldOrders.length} {t('cartsProcessed')}</p>
         </div>
 
-        {/* Profit */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 relative overflow-hidden transition-colors">
-          <div className="absolute top-0 right-0 p-4 opacity-5">
-            <TrendingUp className="w-24 h-24" />
+        {/* Net Profit (Live Margin) */}
+        <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-6 shadow-sm border border-emerald-200 dark:border-emerald-800/50 relative overflow-hidden transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <TrendingUp className="w-24 h-24 text-emerald-600 dark:text-emerald-500" />
           </div>
-          <div className="flex items-center space-x-3 text-emerald-500 dark:text-emerald-400 mb-4">
-            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
+          <div className="flex items-center space-x-3 text-emerald-600 dark:text-emerald-400 mb-4">
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-lg">
               <TrendingUp className="w-5 h-5" />
             </div>
-            <span className="font-semibold text-sm uppercase tracking-wider">Total Profit</span>
+            <span className="font-bold text-sm uppercase tracking-wider">{t('netProfit')}</span>
           </div>
           <div className="flex items-end space-x-2">
-            <span className="text-4xl font-bold text-slate-800 dark:text-slate-100">{stats.profit.toFixed(2)}</span>
-            <span className="text-lg text-slate-500 dark:text-slate-400 mb-1">EGP</span>
+            <span className="text-4xl font-black text-emerald-600 dark:text-emerald-400">
+               {stats.profit > 0 ? '+' : ''}{Math.round(stats.profit)}
+            </span>
+            <span className="text-lg text-emerald-600/70 dark:text-emerald-400/70 mb-1 font-bold">EGP</span>
           </div>
-          <p className="text-sm text-slate-400 mt-2">{(settings.profitMargin * 100).toFixed(0)}% of cost basis</p>
+          <p className="text-sm text-emerald-600/80 dark:text-emerald-400/80 mt-2 font-medium">{t('revenueCosts')}</p>
         </div>
 
-        {/* Reinvestment */}
+        {/* Total Cost */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 relative overflow-hidden transition-colors">
           <div className="absolute top-0 right-0 p-4 opacity-5">
             <Wallet className="w-24 h-24" />
           </div>
-          <div className="flex items-center space-x-3 text-blue-500 dark:text-blue-400 mb-4">
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+          <div className="flex items-center space-x-3 text-slate-500 dark:text-slate-400 mb-4">
+            <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg">
               <Wallet className="w-5 h-5" />
             </div>
-            <span className="font-semibold text-sm uppercase tracking-wider">Reinvestment Fund</span>
+            <span className="font-semibold text-sm uppercase tracking-wider">{t('totalCost')}</span>
           </div>
           <div className="flex items-end space-x-2">
-            <span className="text-4xl font-bold text-slate-800 dark:text-slate-100">{stats.reinvestment.toFixed(2)}</span>
+            <span className="text-4xl font-bold text-slate-800 dark:text-slate-100">{Math.round(stats.totalProductionCosts)}</span>
             <span className="text-lg text-slate-500 dark:text-slate-400 mb-1">EGP</span>
           </div>
-          <p className="text-sm text-slate-400 mt-2">{(settings.reinvestmentMargin * 100).toFixed(0)}% of cost basis</p>
+          <p className="text-sm text-slate-400 mt-2">{t('sumProductionCosts')}</p>
         </div>
       </div>
 
@@ -184,13 +262,13 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
           <div>
             <div className="flex items-center space-x-2 text-amber-500 dark:text-amber-400 mb-2">
               <Crown className="w-5 h-5" />
-              <span className="font-semibold text-sm uppercase tracking-wider">Top Client</span>
+              <span className="font-semibold text-sm uppercase tracking-wider">{t('topClient')}</span>
             </div>
             {analytics.topClient ? (
               <>
                 <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate max-w-[200px] sm:max-w-xs">{analytics.topClient.name}</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  Total Spent: <span className="font-semibold text-slate-700 dark:text-slate-300">{analytics.topClient.totalSpent.toFixed(2)} EGP</span>
+                  {t('totalSpent')} <span className="font-semibold text-slate-700 dark:text-slate-300">{Math.round(analytics.topClient.totalSpent)} {t('egp')}</span>
                 </p>
               </>
             ) : (
@@ -210,13 +288,13 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
           <div>
             <div className="flex items-center space-x-2 text-rose-500 dark:text-rose-400 mb-2">
               <Flame className="w-5 h-5" />
-              <span className="font-semibold text-sm uppercase tracking-wider">Best Seller</span>
+              <span className="font-semibold text-sm uppercase tracking-wider">{t('bestSeller')}</span>
             </div>
             {analytics.bestSeller ? (
               <>
                 <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate max-w-[200px] sm:max-w-xs">{analytics.bestSeller.name}</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  Sold <span className="font-semibold text-slate-700 dark:text-slate-300">{analytics.bestSeller.count}</span> units
+                  {t('sold')} <span className="font-semibold text-slate-700 dark:text-slate-300">{analytics.bestSeller.count}</span> {t('units')}
                 </p>
               </>
             ) : (
@@ -235,7 +313,7 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
       {/* Recent Sales List */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden transition-colors">
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 sticky top-0 z-20">
-          <h3 className="font-bold text-slate-800 dark:text-slate-100">Recent Sales Ledger</h3>
+          <h3 className="font-bold text-slate-800 dark:text-slate-100">{t('recentSalesLedger')}</h3>
           {currentUserRole === 'Owner' && (
             <button
               onClick={handleExportExcel}
@@ -243,7 +321,7 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
               title="Download Excel"
             >
               <FileSpreadsheet className="w-5 h-5 flex-shrink-0" />
-              <span className="hidden sm:inline">Download Excel</span>
+              <span className="hidden sm:inline">{t('downloadExcel')}</span>
             </button>
           )}
         </div>
@@ -251,56 +329,73 @@ const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ orders, setti
           <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400 relative">
             <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-6 py-4">Client</th>
-                <th className="px-6 py-4">Cart Summary</th>
-                <th className="px-6 py-4">Revenue</th>
-                <th className="px-6 py-4 text-emerald-600">Profit Extract</th>
-                <th className="px-6 py-4 text-blue-600">Reinvestment Extract</th>
+                <th className="px-6 py-4">{t('client')}</th>
+                <th className="px-6 py-4">{t('cartSummary')}</th>
+                <th className="px-6 py-4">{t('sellingPrice')}</th>
+                <th className="px-6 py-4 text-slate-500">{t('costPrice')}</th>
+                <th className="px-6 py-4 text-emerald-600">{t('liveMargin')}</th>
               </tr>
             </thead>
             <tbody>
               {soldOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">No sales recorded yet. Move carts to "Sold" to see them here.</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">{t('noSalesYet')}</td>
                 </tr>
               ) : (
                 soldOrders.map(order => {
-                  const marginMultiplier = 1 + settings.profitMargin + settings.reinvestmentMargin;
-                  const cost = (order.totalOrderValue || 0) / marginMultiplier;
-                  const profit = cost * settings.profitMargin;
-                  const reinvest = cost * settings.reinvestmentMargin;
-                  
-                  // Compute safe UI renderings
+                  const sellingPrice = order.totalOrderValue || 0;
+                  const costPrice = getOrderCost(order);
+                  const liveMargin = sellingPrice - costPrice;
+
                   let totalItems = 1;
                   let itemsLabel = 'Legacy Item';
-                  
+
                   if (order.items && Array.isArray(order.items) && order.items.length > 0) {
                      totalItems = order.items.reduce((acc, i) => acc + (i.quantity || 1), 0);
                      itemsLabel = order.items.map(i => i.perfumeName).join(', ');
                   } else if ((order as any).perfumeName) {
                      itemsLabel = (order as any).perfumeName;
                   }
-                  
+
                   return (
                     <tr key={order.id} className="border-b last:border-0 border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-slate-800 dark:text-slate-200">{order.clientName || 'Unknown'}</td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="font-medium text-slate-700 dark:text-slate-300">{totalItems} Item(s)</span>
+                          <span className="font-medium text-slate-700 dark:text-slate-300">{totalItems} {t('items')}</span>
                           <span className="text-xs text-slate-400 dark:text-slate-500 max-w-[200px] truncate">{itemsLabel}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300">{(order.totalOrderValue || 0).toFixed(2)} EGP</td>
-                      <td className="px-6 py-4 text-emerald-600 dark:text-emerald-500 font-medium">+{profit.toFixed(2)}</td>
-                      <td className="px-6 py-4 text-blue-600 dark:text-blue-500 font-medium">+{reinvest.toFixed(2)}</td>
+                      <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300">{Math.round(sellingPrice)} EGP</td>
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-medium">{Math.round(costPrice)} EGP</td>
+                      <td className="px-6 py-4 text-emerald-600 dark:text-emerald-400 font-bold">{liveMargin >= 0 ? '+' : ''}{Math.round(liveMargin)} EGP</td>
                     </tr>
-                  )
+                  );
                 })
               )}
             </tbody>
           </table>
         </div>
       </div>
+      
+      {showWeeklyReport && (
+        <WeeklyReportModal orders={orders} onClose={() => setShowWeeklyReport(false)} />
+      )}
+      </>
+      ) : (
+      <div className="h-full flex flex-col">
+          <div className="mb-4">
+             <button
+                onClick={() => setView('dashboard')}
+                className="flex items-center space-x-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium transition-colors"
+             >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Accounting</span>
+             </button>
+          </div>
+          {view === 'purchases' ? <Purchases /> : view === 'capital' ? <CapitalAssets /> : <ActivityLedger orders={orders} />}
+      </div>
+      )}
     </div>
   );
 };

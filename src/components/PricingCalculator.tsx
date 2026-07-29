@@ -26,9 +26,12 @@ const PricingCalculator: FC<PricingCalculatorProps> = ({ currentUserRole = 'Owne
       const bottleCost = Number(emptyBottlePrice);
       const oilCostPerMl = Number(oilPrice);
       
-      const { constant, oilVol } = settings.sizes[size];
+      const { constant } = settings.sizes[size];
       
-      const totalCost = settings.packagingConstant + constant + bottleCost + (oilCostPerMl * oilVol);
+      const FIXED_OIL_VOLUMES: Record<string, number> = { '30ml': 8, '50ml': 15, '100ml': 30 };
+      const oilVol = FIXED_OIL_VOLUMES[size] || 15;
+      
+      const totalCost = settings.packagingConstant + settings.stickerCost + settings.miscCost + constant + bottleCost + (oilCostPerMl * oilVol);
       const profit = totalCost * settings.profitMargin;
       const reinvestment = totalCost * settings.reinvestmentMargin;
       const finalPrice = totalCost + profit + reinvestment;
@@ -148,9 +151,9 @@ const PricingCalculator: FC<PricingCalculatorProps> = ({ currentUserRole = 'Owne
             <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 transition-colors">
               <h4 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Formula Breakdown</h4>
               <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2">
-                <li className="flex justify-between"><span>Packaging Constant:</span> <span className="font-medium text-slate-800 dark:text-slate-200">{settings.packagingConstant} EGP</span></li>
+                <li className="flex justify-between"><span>Packaging/Sticker/Misc:</span> <span className="font-medium text-slate-800 dark:text-slate-200">{settings.packagingConstant + settings.stickerCost + settings.miscCost} EGP</span></li>
                 <li className="flex justify-between"><span>Size Constant ({size}):</span> <span className="font-medium text-slate-800 dark:text-slate-200">{settings.sizes[size].constant} EGP</span></li>
-                <li className="flex justify-between"><span>Required Oil ({size}):</span> <span className="font-medium text-slate-800 dark:text-slate-200">{settings.sizes[size].oilVol} ml</span></li>
+                <li className="flex justify-between"><span>Required Oil ({size}):</span> <span className="font-medium text-slate-800 dark:text-slate-200">{{ '30ml': 8, '50ml': 15, '100ml': 30 }[size as string] || 15} ml</span></li>
               </ul>
             </div>
           )}

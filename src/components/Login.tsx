@@ -1,34 +1,56 @@
 import React, { useState } from 'react';
 import { Lock, User as UserIcon, LogIn, AlertCircle } from 'lucide-react';
 import { User } from '../types';
+import logo from '../assets/logo.png';
+import bgImage from '../assets/background.jpeg';
+import { supabase } from '../supabaseClient';
 
 interface LoginProps {
   onLogin: (user: User) => void;
-  users: User[];
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
+const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    const foundUser = users.find(u => u.username === username && u.password === password);
-    
-    if (foundUser) {
-      onLogin(foundUser);
-    } else {
-      setError('Invalid username or password');
+    try {
+      const { data, error: dbError } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .single();
+
+      if (dbError || !data) {
+        setError(dbError ? dbError.message : 'Invalid username or password');
+        setIsLoading(false);
+        return;
+      }
+
+      onLogin({
+        id: data.id,
+        username: data.username,
+        role: data.role
+      });
+      
+    } catch (err: any) {
+      setError(err?.message || 'An unexpected error occurred during login');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <div 
       className="min-h-screen flex items-center justify-center px-4 transition-colors relative overflow-hidden bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: `url('/background.jpeg')` }}
+      style={{ backgroundImage: `url(${bgImage})` }}
     >
       {/* Heavy Blur & Semi-transparent Dark Tint Overlay */}
       <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-3xl z-0"></div>
@@ -39,7 +61,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 p-8 sm:p-10 relative z-10 transition-colors">
         <div className="flex flex-col items-center mb-8">
           <div className="mb-4 relative flex justify-center items-center">
-            <img src="/logo.png" alt="Wanas Perfumes Logo" className="h-24 w-24 sm:h-28 sm:w-28 object-contain relative z-10 drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src={logo} alt="Wanas Perfumes Logo" className="h-24 w-24 sm:h-28 sm:w-28 object-contain relative z-10 drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           </div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 text-center font-cairo">Wanas Perfumes</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Authorized Access Only</p>
@@ -65,7 +87,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="block w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all placeholder-slate-400"
-                placeholder="Enter your username"
+                placeholder="Enter your system username"
               />
             </div>
           </div>
@@ -104,10 +126,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
 
           <button 
             type="submit"
-            className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all active:scale-95"
+            disabled={isLoading}
+            className={`w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white transition-all active:scale-95 ${isLoading ? 'bg-amber-400 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500'}`}
           >
             <LogIn className="w-5 h-5 mr-2" />
-            Sign In to System
+            {isLoading ? 'Authenticating...' : 'Sign In to System'}
           </button>
         </form>
         

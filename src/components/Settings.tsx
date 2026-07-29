@@ -1,20 +1,29 @@
 import React, { useState } from 'react';
 import { SystemSettings, BottleSize, PresetOption } from '../types';
-import { Save, CircleDollarSign, FlaskConical, Package, Plus, Trash2, ListFilter, Droplet } from 'lucide-react';
+import { Save, CircleDollarSign, FlaskConical, Package, Plus, Trash2, ListFilter, Droplet, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface SettingsProps {
   settings: SystemSettings;
-  setSettings: React.Dispatch<React.SetStateAction<SystemSettings>>;
+  onSave: (newSettings: SystemSettings) => Promise<boolean>;
+  onResetSystem: () => Promise<void>;
 }
 
-const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
+const Settings: React.FC<SettingsProps> = ({ settings, onSave, onResetSystem }) => {
   const [localSettings, setLocalSettings] = useState<SystemSettings>(settings);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
-  const handleSave = () => {
-    setSettings(localSettings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    const success = await onSave(localSettings);
+    if (success) {
+      setSaved(true);
+      setSaveError(false);
+      setTimeout(() => setSaved(false), 3000);
+    } else {
+      setSaveError(true);
+      setSaved(false);
+      setTimeout(() => setSaveError(false), 4000);
+    }
   };
 
   const handleSizeChange = (size: BottleSize, field: 'constant' | 'oilVol', value: string) => {
@@ -55,7 +64,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
   };
 
   return (
-    <div className="space-y-6 h-full overflow-y-auto custom-scrollbar pb-8 pr-1 md:pr-2">
+    <div className="space-y-6 h-full overflow-y-auto custom-scrollbar pb-8 pr-1 md:pr-2 relative">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sticky top-0 bg-slate-50 dark:bg-slate-950 z-20 py-2">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Global Configuration</h2>
@@ -65,16 +74,32 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
           <button 
             onClick={handleSave}
             className={`flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold transition-all shadow-md w-full sm:w-auto ${
-              saved 
-              ? 'bg-emerald-500 text-white shadow-emerald-500/20' 
+              saved
+              ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+              : saveError
+              ? 'bg-red-500 text-white shadow-red-500/20'
               : 'bg-amber-600 hover:bg-amber-700 text-white active:scale-95 shadow-amber-600/20'
             }`}
           >
-            <Save className="w-5 h-5" />
-            <span>{saved ? 'Saved Successfully!' : 'Apply Master Settings'}</span>
+            {saved ? <CheckCircle2 className="w-5 h-5" /> : saveError ? <AlertCircle className="w-5 h-5" /> : <Save className="w-5 h-5" />}
+            <span>{saved ? 'Saved to Cloud!' : saveError ? 'Save Failed — Retry' : 'Apply Master Settings'}</span>
           </button>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {saved && (
+        <div className="fixed bottom-6 right-6 z-[9999] flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-4 font-semibold">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          Settings saved to Supabase successfully!
+        </div>
+      )}
+      {saveError && (
+        <div className="fixed bottom-6 right-6 z-[9999] flex items-center gap-3 bg-red-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-4 font-semibold">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          Failed to save. Check your connection or Supabase schema.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Core Margins Card */}
@@ -87,16 +112,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
           </div>
 
           <div className="space-y-5 flex-1">
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Base Packaging Constant (EGP)</label>
-              <input 
-                type="number" step="0.5"
-                value={localSettings.packagingConstant}
-                onChange={e => setLocalSettings({...localSettings, packagingConstant: Number(e.target.value)})}
-                className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-              />
-              <p className="text-[11px] text-slate-400 mt-1.5 font-medium">Applied identically as a baseline to all container volumes.</p>
-            </div>
+            {/* Base Packaging Constant was moved to Global Production Costs */}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
@@ -140,9 +156,9 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
             <h3 className="font-bold text-slate-800 dark:text-slate-100">Volume Matrix Constraints</h3>
           </div>
 
-          <div className="space-y-4 flex-1">
+          <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[300px] pr-2">
             {(['30ml', '50ml', '100ml'] as BottleSize[]).map((size) => (
-              <div key={size} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors">
+              <div key={size} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors mb-3">
                 <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2" /> {size} Standard Profile
                 </h4>
@@ -158,16 +174,90 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Required Oil (ml)</label>
-                    <input 
-                      type="number" step="0.5"
-                      value={localSettings.sizes[size].oilVol}
-                      onChange={e => handleSizeChange(size, 'oilVol', e.target.value)}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                    />
+                    <div className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-lg text-sm font-medium cursor-not-allowed">
+                      {{ '30ml': 8, '50ml': 15, '100ml': 30 }[size]} ml (Fixed)
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Global Production Costs Card */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 transition-colors flex flex-col">
+            <div className="flex items-center space-x-3 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+                <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500 rounded-lg">
+                    <CircleDollarSign className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100">Global Production Costs</h3>
+            </div>
+
+            <div className="space-y-5 flex-1">
+                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Packaging & Bag (EGP)</label>
+                    <input 
+                        type="number" step="0.5"
+                        value={localSettings.packagingConstant}
+                        onChange={e => setLocalSettings({...localSettings, packagingConstant: Number(e.target.value)})}
+                        className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                    />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Sticker & Labels (EGP)</label>
+                        <input 
+                            type="number" step="0.5"
+                            value={localSettings.stickerCost}
+                            onChange={e => setLocalSettings({...localSettings, stickerCost: Number(e.target.value)})}
+                            className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                        />
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Misc/Overhead (EGP)</label>
+                        <input 
+                            type="number" step="0.5"
+                            value={localSettings.miscCost}
+                            onChange={e => setLocalSettings({...localSettings, miscCost: Number(e.target.value)})}
+                            className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Target Cost Percentage</label>
+                    <div className="relative">
+                        <input 
+                            type="number" step="1"
+                            value={localSettings.targetCostPercentage * 100}
+                            onChange={e => setLocalSettings({...localSettings, targetCostPercentage: Number(e.target.value) / 100})}
+                            className="w-full pl-4 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                        />
+                        <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                            <span className="text-slate-400 font-bold">%</span>
+                        </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2 font-medium italic">Example: 60% means Production Cost is 60% of Suggested Price.</p>
+                </div>
+            </div>
+        </div>
+
+        {/* Wipe Logic Place-in */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 p-6 transition-colors flex flex-col justify-center">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Total Cloud Storage Wipe</span>
+              <span className="text-xs mt-1 text-slate-500 opacity-90 block">Erases all Supabase order telemetry</span>
+            </div>
+            <button
+              onClick={onResetSystem}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center space-x-2 transition-colors font-semibold shadow-sm"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Format System</span>
+            </button>
           </div>
         </div>
       </div>
@@ -223,9 +313,6 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
                 </button>
               </div>
             ))}
-            {localSettings.bottlePresets.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-4">No bottle presets defined.</p>
-            )}
           </div>
         </div>
 
@@ -279,9 +366,6 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
                 </button>
               </div>
             ))}
-            {localSettings.oilPresets.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-4">No oil presets defined.</p>
-            )}
           </div>
         </div>
       </div>
